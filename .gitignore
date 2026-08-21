@@ -8,3 +8,9 @@
 .externalNativeBuild
 .cxx
 app/build/
+
+# Claves de firma — nunca commitear
+keystore.properties
+*.jks
+*.keystore
+
