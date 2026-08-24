@@ -48,8 +48,8 @@ interface TabDao {
     suspend fun nextPosition(): Int?
 
     @Transaction
-    suspend fun saveOrder(tabs: List<TabEntity>) {
-        tabs.forEachIndexed { index, tab -> updatePosition(tab.id, index) }
+    suspend fun saveOrder(ids: List<Long>) {
+        ids.forEachIndexed { index, id -> updatePosition(id, index) }
     }
 
     @Query("UPDATE tabs SET position = :position WHERE id = :id")

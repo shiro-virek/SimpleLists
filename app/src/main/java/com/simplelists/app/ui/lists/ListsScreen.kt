@@ -28,7 +28,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DragHandle
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FormatListBulleted
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AlertDialog
@@ -37,6 +39,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -89,6 +93,7 @@ fun ListsScreen(dbEpoch: Int, onOpenSettings: () -> Unit) {
     val filterTags by vm.selectedFilterTags.collectAsStateWithLifecycle()
 
     var showAddTabDialog by rememberSaveable { mutableStateOf(false) }
+    var showManageTabs by rememberSaveable { mutableStateOf(false) }
     var renameTabTarget by remember { mutableStateOf<TabEntity?>(null) }
     var deleteTabTarget by remember { mutableStateOf<TabEntity?>(null) }
     var editingItem by remember { mutableStateOf<ItemWithTags?>(null) }
@@ -135,6 +140,7 @@ fun ListsScreen(dbEpoch: Int, onOpenSettings: () -> Unit) {
                 selectedTabId = selectedTabId,
                 onTabSelected = { vm.selectTab(it) },
                 onAddTab = { showAddTabDialog = true },
+                onManageTabs = { showManageTabs = true },
                 onRenameTab = { renameTabTarget = it },
                 onDeleteTab = { deleteTabTarget = it }
             )
@@ -211,6 +217,16 @@ fun ListsScreen(dbEpoch: Int, onOpenSettings: () -> Unit) {
         )
     }
 
+    if (showManageTabs) {
+        ManageTabsSheet(
+            tabs = tabs,
+            onDismiss = { showManageTabs = false },
+            onPersistOrder = { vm.persistTabOrder(it) },
+            onRename = { renameTabTarget = it },
+            onDelete = { deleteTabTarget = it }
+        )
+    }
+
     if (showNewItemDialog || editingItem != null) {
         val targetTabId = selectedTabId ?: tabs.firstOrNull()?.id
         ItemEditorDialog(
@@ -245,6 +261,7 @@ private fun TabsRow(
     selectedTabId: Long?,
     onTabSelected: (Long) -> Unit,
     onAddTab: () -> Unit,
+    onManageTabs: () -> Unit,
     onRenameTab: (TabEntity) -> Unit,
     onDeleteTab: (TabEntity) -> Unit
 ) {
@@ -267,6 +284,15 @@ private fun TabsRow(
                 Icon(
                     Icons.Rounded.Add,
                     contentDescription = "Agregar pestaña",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        item(key = "manage_tabs") {
+            IconButton(onClick = onManageTabs) {
+                Icon(
+                    Icons.Rounded.Edit,
+                    contentDescription = "Editar pestañas",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -488,6 +514,96 @@ private fun ItemContent(row: ItemWithTags) {
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                         )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ManageTabsSheet(
+    tabs: List<TabEntity>,
+    onDismiss: () -> Unit,
+    onPersistOrder: (List<Long>) -> Unit,
+    onRename: (TabEntity) -> Unit,
+    onDelete: (TabEntity) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val orderedTabs = remember { SnapshotStateList<TabEntity>() }
+    var dragging by remember { mutableStateOf(false) }
+    LaunchedEffect(tabs) {
+        if (!dragging) {
+            orderedTabs.clear()
+            orderedTabs.addAll(tabs)
+        }
+    }
+
+    val lazyListState = rememberLazyListState()
+    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        if (from.index < orderedTabs.size && to.index < orderedTabs.size) {
+            orderedTabs.add(to.index, orderedTabs.removeAt(from.index))
+        }
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Text(
+            text = "Editar pestañas",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp)
+        )
+        LazyColumn(
+            state = lazyListState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 32.dp)
+        ) {
+            items(orderedTabs, key = { it.id }) { tab ->
+                ReorderableItem(reorderableState, key = tab.id) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        IconButton(
+                            onClick = {},
+                            modifier = Modifier.draggableHandle(
+                                onDragStarted = { dragging = true },
+                                onDragStopped = {
+                                    dragging = false
+                                    onPersistOrder(orderedTabs.map { it.id })
+                                }
+                            )
+                        ) {
+                            Icon(
+                                Icons.Rounded.DragHandle,
+                                contentDescription = "Mover pestaña",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            text = tab.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = { onRename(tab) }) {
+                            Icon(
+                                Icons.Rounded.Edit,
+                                contentDescription = "Renombrar pestaña",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(onClick = { onDelete(tab) }) {
+                            Icon(
+                                Icons.Rounded.Delete,
+                                contentDescription = "Eliminar pestaña",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
             }

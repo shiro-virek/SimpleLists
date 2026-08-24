@@ -84,6 +84,10 @@ class ListsViewModel(app: Application) : AndroidViewModel(app) {
         db.tabDao().delete(tab)
     }
 
+    fun persistTabOrder(orderedIds: List<Long>) = viewModelScope.launch {
+        db.tabDao().saveOrder(orderedIds)
+    }
+
     fun saveItem(
         existing: ItemWithTags?,
         tabId: Long,
