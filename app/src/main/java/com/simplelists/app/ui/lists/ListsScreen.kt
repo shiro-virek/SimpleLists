@@ -101,11 +101,23 @@ fun ListsScreen(dbEpoch: Int, onOpenSettings: () -> Unit) {
 
     val displayList = remember { SnapshotStateList<ItemWithTags>() }
     var dragging by remember { mutableStateOf(false) }
-    LaunchedEffect(items) {
+    // Re-sincroniza cuando llegan datos nuevos O cuando termina un arrastre,
+    // de modo que ninguna emisión quede "salteada" para siempre.
+    LaunchedEffect(items, dragging) {
         if (!dragging) {
             displayList.clear()
             displayList.addAll(items)
         }
+    }
+    // Si un arrastre se cancela de forma anómala (app a segundo plano, notificación, etc.),
+    // onDragStopped podría no ejecutarse; al volver al primer plano desbloqueamos por las dudas.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) dragging = false
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     val filterActive = filterTags.isNotEmpty()
 

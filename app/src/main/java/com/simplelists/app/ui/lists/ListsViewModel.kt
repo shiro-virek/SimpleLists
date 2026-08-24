@@ -3,6 +3,7 @@ package com.simplelists.app.ui.lists
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
 import com.simplelists.app.data.db.DbProvider
 import com.simplelists.app.data.db.ItemEntity
 import com.simplelists.app.data.db.ItemWithTags
@@ -97,21 +98,23 @@ class ListsViewModel(app: Application) : AndroidViewModel(app) {
     ) = viewModelScope.launch {
         val trimmedName = name.trim()
         if (trimmedName.isEmpty()) return@launch
-        if (existing == null) {
-            val position = db.itemDao().nextPosition(tabId) ?: 0
-            val id = db.itemDao().insert(
-                ItemEntity(
-                    tabId = tabId,
-                    name = trimmedName,
-                    description = description.trim(),
-                    createdAt = System.currentTimeMillis(),
-                    position = position
+        db.withTransaction {
+            if (existing == null) {
+                val position = db.itemDao().nextPosition(tabId) ?: 0
+                val id = db.itemDao().insert(
+                    ItemEntity(
+                        tabId = tabId,
+                        name = trimmedName,
+                        description = description.trim(),
+                        createdAt = System.currentTimeMillis(),
+                        position = position
+                    )
                 )
-            )
-            db.itemDao().setTags(id, tagIds)
-        } else {
-            db.itemDao().update(existing.item.copy(name = trimmedName, description = description.trim()))
-            db.itemDao().setTags(existing.item.id, tagIds)
+                db.itemDao().setTags(id, tagIds)
+            } else {
+                db.itemDao().update(existing.item.copy(name = trimmedName, description = description.trim()))
+                db.itemDao().setTags(existing.item.id, tagIds)
+            }
         }
     }
 
