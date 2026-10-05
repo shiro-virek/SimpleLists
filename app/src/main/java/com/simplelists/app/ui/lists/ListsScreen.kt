@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FormatListBulleted
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -48,6 +50,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -91,6 +95,17 @@ fun ListsScreen(dbEpoch: Int, onOpenSettings: () -> Unit) {
     val items by vm.items.collectAsStateWithLifecycle()
     val selectedTabId by vm.selectedTabId.collectAsStateWithLifecycle()
     val filterTags by vm.selectedFilterTags.collectAsStateWithLifecycle()
+    val searchQuery by vm.searchQuery.collectAsStateWithLifecycle()
+    val tabCounts by vm.tabCounts.collectAsStateWithLifecycle()
+    val message by vm.message.collectAsStateWithLifecycle()
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(message) {
+        message?.let {
+            snackbarHostState.showSnackbar(it)
+            vm.consumeMessage()
+        }
+    }
 
     var showAddTabDialog by rememberSaveable { mutableStateOf(false) }
     var showManageTabs by rememberSaveable { mutableStateOf(false) }
@@ -119,9 +134,10 @@ fun ListsScreen(dbEpoch: Int, onOpenSettings: () -> Unit) {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    val filterActive = filterTags.isNotEmpty()
+    val filtersActive = filterTags.isNotEmpty() || searchQuery.isNotBlank()
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.app_name)) },
@@ -149,12 +165,19 @@ fun ListsScreen(dbEpoch: Int, onOpenSettings: () -> Unit) {
         ) {
             TabsRow(
                 tabs = tabs,
+                counts = tabCounts,
                 selectedTabId = selectedTabId,
                 onTabSelected = { vm.selectTab(it) },
                 onAddTab = { showAddTabDialog = true },
                 onManageTabs = { showManageTabs = true },
                 onRenameTab = { renameTabTarget = it },
                 onDeleteTab = { deleteTabTarget = it }
+            )
+
+            SearchField(
+                query = searchQuery,
+                onQueryChange = { vm.setSearchQuery(it) },
+                onClear = { vm.clearSearch() }
             )
 
             FilterRow(
@@ -164,7 +187,7 @@ fun ListsScreen(dbEpoch: Int, onOpenSettings: () -> Unit) {
                 onClear = { vm.clearFilter() }
             )
 
-            AnimatedVisibility(visible = filterActive) {
+            AnimatedVisibility(visible = filtersActive) {
                 Text(
                     text = "Filtro activo: el arrastre está deshabilitado",
                     style = MaterialTheme.typography.labelSmall,
@@ -175,7 +198,7 @@ fun ListsScreen(dbEpoch: Int, onOpenSettings: () -> Unit) {
 
             ItemsList(
                 hasTabs = tabs.isNotEmpty(),
-                filterActive = filterActive,
+                filtersActive = filtersActive,
                 displayList = displayList,
                 onStartDrag = { dragging = true },
                 onStopDrag = {
@@ -270,6 +293,7 @@ fun ListsScreen(dbEpoch: Int, onOpenSettings: () -> Unit) {
 @Composable
 private fun TabsRow(
     tabs: List<TabEntity>,
+    counts: Map<Long, Int>,
     selectedTabId: Long?,
     onTabSelected: (Long) -> Unit,
     onAddTab: () -> Unit,
@@ -285,6 +309,7 @@ private fun TabsRow(
         items(tabs, key = { it.id }) { tab ->
             TabChip(
                 tab = tab,
+                count = counts[tab.id] ?: 0,
                 selected = tab.id == selectedTabId,
                 onClick = { onTabSelected(tab.id) },
                 onRename = { onRenameTab(tab) },
@@ -316,6 +341,7 @@ private fun TabsRow(
 @Composable
 private fun TabChip(
     tab: TabEntity,
+    count: Int,
     selected: Boolean,
     onClick: () -> Unit,
     onRename: () -> Unit,
@@ -335,15 +361,35 @@ private fun TabChip(
                     onLongClick = { menuExpanded = true }
                 )
         ) {
-            Text(
-                text = tab.name,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                style = MaterialTheme.typography.labelLarge,
-                color = if (selected) MaterialTheme.colorScheme.onPrimary
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp)
+            ) {
+                Text(
+                    text = tab.name,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (selected) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (count > 0) {
+                    Spacer(Modifier.size(6.dp))
+                    Surface(
+                        shape = CircleShape,
+                        color = if (selected) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.22f)
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.14f)
+                    ) {
+                        Text(
+                            text = count.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (selected) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+            }
         }
         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
             DropdownMenuItem(
@@ -362,6 +408,43 @@ private fun TabChip(
             )
         }
     }
+}
+
+@Composable
+private fun SearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onClear: () -> Unit
+) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        placeholder = { Text("Buscar en esta pestaña") },
+        singleLine = true,
+        leadingIcon = {
+            Icon(
+                Icons.Rounded.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = onClear) {
+                    Icon(
+                        Icons.Rounded.Close,
+                        contentDescription = "Limpiar búsqueda",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        textStyle = MaterialTheme.typography.bodyMedium,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 2.dp)
+    )
 }
 
 @Composable
@@ -399,7 +482,7 @@ private fun FilterRow(
 @Composable
 private fun ItemsList(
     hasTabs: Boolean,
-    filterActive: Boolean,
+    filtersActive: Boolean,
     displayList: SnapshotStateList<ItemWithTags>,
     onStartDrag: () -> Unit,
     onStopDrag: () -> Unit,
@@ -411,9 +494,9 @@ private fun ItemsList(
             subtitle = "Usá el botón + para crear tu primera lista"
         )
 
-        displayList.isEmpty() && filterActive -> EmptyState(
+        displayList.isEmpty() && filtersActive -> EmptyState(
             title = "Sin resultados",
-            subtitle = "Ningún ítem coincide con el filtro seleccionado"
+            subtitle = "Ningún ítem coincide con la búsqueda o los filtros"
         )
 
         displayList.isEmpty() -> EmptyState(
@@ -424,7 +507,7 @@ private fun ItemsList(
         else -> {
             val lazyListState = rememberLazyListState()
             val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-                if (!filterActive && from.index < displayList.size && to.index < displayList.size) {
+                if (!filtersActive && from.index < displayList.size && to.index < displayList.size) {
                     displayList.add(to.index, displayList.removeAt(from.index))
                 }
             }
@@ -460,7 +543,7 @@ private fun ItemsList(
                                 ) {
                                     ItemContent(row)
                                 }
-                                val dragModifier = if (filterActive) Modifier
+                                val dragModifier = if (filtersActive) Modifier
                                 else Modifier.draggableHandle(
                                     onDragStarted = { onStartDrag() },
                                     onDragStopped = { onStopDrag() }

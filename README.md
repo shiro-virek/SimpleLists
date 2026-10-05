@@ -4,8 +4,11 @@ Android app for managing tabbed lists: each tab is an independent list of items 
 
 ## Features
 
-- 🗂️ **Unlimited tabs** — add, rename, and delete tabs (long-press on a tab)
+- 🗂️ **Unlimited tabs** — add, rename, delete, and drag-to-reorder tabs (long-press for actions, ✎ button to reorder)
 - 📝 **Items with a large title**, description, creation date, and tags
+- 🔍 **Search** inside the current tab, by name or description (combines with the tag filters)
+- 🚫 **No duplicate item names** within the same tab (case-insensitive)
+- 🔢 **Item counter** badge on every tab
 - ↔️ **Drag & drop reordering** within each list
 - 🏷️ **User-defined tags** managed from Settings, with multi-tag filtering inside each list
 - 💾 **Full backup**: export and import the database as a `.db` file through the system file picker (no storage permissions required)

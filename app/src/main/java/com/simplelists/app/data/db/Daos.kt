@@ -26,11 +26,16 @@ data class ItemWithTags(
     val tags: List<TagEntity>
 )
 
+data class TabCount(val tabId: Long, val count: Int)
+
 @Dao
 interface TabDao {
 
     @Query("SELECT * FROM tabs ORDER BY position")
     fun observeAll(): Flow<List<TabEntity>>
+
+    @Query("SELECT tabId, COUNT(*) AS count FROM items GROUP BY tabId")
+    fun observeItemCounts(): Flow<List<TabCount>>
 
     @Query("SELECT COUNT(*) FROM tabs")
     suspend fun count(): Int
@@ -65,6 +70,12 @@ interface ItemDao {
 
     @Query("SELECT MAX(position) + 1 FROM items WHERE tabId = :tabId")
     suspend fun nextPosition(tabId: Long): Int?
+
+    @Query(
+        "SELECT id FROM items WHERE tabId = :tabId AND name = :name COLLATE NOCASE " +
+            "AND id != :excludeId LIMIT 1"
+    )
+    suspend fun findIdByName(tabId: Long, name: String, excludeId: Long): Long?
 
     @Insert
     suspend fun insert(item: ItemEntity): Long

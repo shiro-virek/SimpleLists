@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -32,6 +33,22 @@ class ListsViewModel(app: Application) : AndroidViewModel(app) {
 
     val selectedTabId = MutableStateFlow<Long?>(null)
     val selectedFilterTags = MutableStateFlow<Set<Long>>(emptySet())
+    val searchQuery = MutableStateFlow("")
+
+    val tabCounts: StateFlow<Map<Long, Int>> = db.tabDao().observeItemCounts()
+        .map { list -> list.associate { it.tabId to it.count } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message
+
+    fun consumeMessage() {
+        _message.value = null
+    }
+
+    fun setSearchQuery(query: String) {
+        searchQuery.value = query
+    }
 
     init {
         viewModelScope.launch {
@@ -47,13 +64,22 @@ class ListsViewModel(app: Application) : AndroidViewModel(app) {
         if (id == null) flowOf(emptyList()) else db.itemDao().observeByTab(id)
     }
 
-    val items: StateFlow<List<ItemWithTags>> = combine(rawItems, selectedFilterTags) { list, filter ->
-        if (filter.isEmpty()) list else list.filter { row -> row.tags.any { it.id in filter } }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val items: StateFlow<List<ItemWithTags>> =
+        combine(rawItems, selectedFilterTags, searchQuery) { list, filter, query ->
+            val byTag = if (filter.isEmpty()) list else list.filter { row ->
+                row.tags.any { it.id in filter }
+            }
+            if (query.isBlank()) byTag
+            else byTag.filter { row ->
+                row.item.name.contains(query, ignoreCase = true) ||
+                    row.item.description.contains(query, ignoreCase = true)
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun selectTab(id: Long) {
         selectedTabId.value = id
         selectedFilterTags.value = emptySet()
+        searchQuery.value = ""
     }
 
     fun toggleTagFilter(tagId: Long) {
@@ -66,6 +92,10 @@ class ListsViewModel(app: Application) : AndroidViewModel(app) {
         selectedFilterTags.value = emptySet()
     }
 
+    fun clearSearch() {
+        searchQuery.value = ""
+    }
+
     fun addTab(name: String) = viewModelScope.launch {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return@launch
@@ -73,6 +103,7 @@ class ListsViewModel(app: Application) : AndroidViewModel(app) {
         val newId = db.tabDao().insert(TabEntity(name = trimmed, position = position))
         selectedTabId.value = newId
         selectedFilterTags.value = emptySet()
+        searchQuery.value = ""
     }
 
     fun renameTab(tab: TabEntity, newName: String) = viewModelScope.launch {
@@ -98,23 +129,38 @@ class ListsViewModel(app: Application) : AndroidViewModel(app) {
     ) = viewModelScope.launch {
         val trimmedName = name.trim()
         if (trimmedName.isEmpty()) return@launch
-        db.withTransaction {
-            if (existing == null) {
-                val position = db.itemDao().nextPosition(tabId) ?: 0
-                val id = db.itemDao().insert(
-                    ItemEntity(
-                        tabId = tabId,
-                        name = trimmedName,
-                        description = description.trim(),
-                        createdAt = System.currentTimeMillis(),
-                        position = position
-                    )
-                )
-                db.itemDao().setTags(id, tagIds)
+        val conflict = db.withTransaction {
+            val duplicate = db.itemDao().findIdByName(
+                tabId = tabId,
+                name = trimmedName,
+                excludeId = existing?.item?.id ?: -1L
+            )
+            if (duplicate != null) {
+                true
             } else {
-                db.itemDao().update(existing.item.copy(name = trimmedName, description = description.trim()))
-                db.itemDao().setTags(existing.item.id, tagIds)
+                if (existing == null) {
+                    val position = db.itemDao().nextPosition(tabId) ?: 0
+                    val id = db.itemDao().insert(
+                        ItemEntity(
+                            tabId = tabId,
+                            name = trimmedName,
+                            description = description.trim(),
+                            createdAt = System.currentTimeMillis(),
+                            position = position
+                        )
+                    )
+                    db.itemDao().setTags(id, tagIds)
+                } else {
+                    db.itemDao().update(
+                        existing.item.copy(name = trimmedName, description = description.trim())
+                    )
+                    db.itemDao().setTags(existing.item.id, tagIds)
+                }
+                false
             }
+        }
+        if (conflict) {
+            _message.value = "Ya existe un ítem llamado \"$trimmedName\" en esta pestaña"
         }
     }
 
