@@ -46,6 +46,10 @@ class ListsViewModel(app: Application) : AndroidViewModel(app) {
         _message.value = null
     }
 
+    fun showMessage(text: String) {
+        _message.value = text
+    }
+
     fun setSearchQuery(query: String) {
         searchQuery.value = query
     }
