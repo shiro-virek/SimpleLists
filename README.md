@@ -9,6 +9,7 @@ Android app for managing tabbed lists: each tab is an independent list of items 
 - 🔍 **Search** inside the current tab, by name or description (combines with the tag filters)
 - 🚫 **No duplicate item names** within the same tab (case-insensitive)
 - 🔢 **Item counter** badge on every tab
+- 📋 **Copy current list** to the clipboard, one item per line, with descriptions in parentheses when present
 - ↔️ **Drag & drop reordering** within each list
 - 🏷️ **User-defined tags** managed from Settings, with multi-tag filtering inside each list
 - 💾 **Full backup**: export and import the database as a `.db` file through the system file picker (no storage permissions required)

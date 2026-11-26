@@ -1,5 +1,8 @@
 package com.simplelists.app.ui.lists
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -29,6 +32,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.Edit
@@ -67,6 +71,7 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -85,6 +90,21 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private val dateFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+private val whitespaceRegex = Regex("""\s+""")
+
+private fun singleLine(value: String): String = value.trim().replace(whitespaceRegex, " ")
+
+private fun formatListForClipboard(items: List<ItemWithTags>): String =
+    items.joinToString(separator = "\n") { row ->
+        val name = singleLine(row.item.name)
+        val description = singleLine(row.item.description)
+        if (description.isEmpty()) name else "$name ($description)"
+    }
+
+private fun copyTextToClipboard(context: Context, text: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("SimpleLists", text))
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,6 +119,7 @@ fun ListsScreen(dbEpoch: Int, onOpenSettings: () -> Unit) {
     val tabCounts by vm.tabCounts.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
 
+    val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(message) {
         message?.let {
@@ -142,6 +163,18 @@ fun ListsScreen(dbEpoch: Int, onOpenSettings: () -> Unit) {
             TopAppBar(
                 title = { Text(stringResource(R.string.app_name)) },
                 actions = {
+                    IconButton(
+                        onClick = {
+                            copyTextToClipboard(context, formatListForClipboard(items))
+                            vm.showMessage("Lista copiada al portapapeles")
+                        },
+                        enabled = items.isNotEmpty()
+                    ) {
+                        Icon(
+                            Icons.Rounded.ContentCopy,
+                            contentDescription = "Copiar lista"
+                        )
+                    }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Rounded.Settings, contentDescription = "Ajustes")
                     }
